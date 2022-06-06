@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/user");
+const { User } = require("../models");
 
 module.exports = (req, res, next) => {
   const { authorization } = req.headers;
@@ -11,10 +11,10 @@ module.exports = (req, res, next) => {
 
   try {
     const { userId } = jwt.verify(tokenValue, "test-secret-key");
-    User.findById(userId).exec().then((user) => {
-        res.locals.user = user;
-        next();
-      });
+    User.findByPk(userId).then((user) => { // findByPrimaryKey
+      res.locals.user = user;
+      next();
+    });
   } catch (error) {
     return res.status(401).json({ errorMessage: "로그인 후 사용하세요." });
   }

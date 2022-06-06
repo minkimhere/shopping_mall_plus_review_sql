@@ -1,5 +1,6 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const { Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const Joi = require("joi");
 const { User } = require("./models"); // index에 연결해서 사용됨
@@ -38,7 +39,9 @@ router.post("/users", async (req, res) => {
       });
     }
 
-    const existUser = await User.find({ $or: [{ nickname }, { email }] });
+    const existUser = await User.findAll({
+      where: { [Op.or]: [{ email }, { nickname }] },
+    });
 
     if (existUser.length) {
       return res.status(400).json({
@@ -46,11 +49,11 @@ router.post("/users", async (req, res) => {
       });
     }
 
-    const user = new User({ email, nickname, password });
-    await user.save();
+    await User.create({ email, nickname, password });
 
     res.status(201).json({});
   } catch (error) {
+    console.error(error);
     res
       .status(400)
       .json({ errorMessage: "요청한 데이터 형식이 올바르지 않습니다." });
@@ -66,7 +69,7 @@ router.post("/auth", async (req, res) => {
   try {
     const { email, password } = await postAuthSchema.validateAsync(req.body);
 
-    const user = await User.findOne({ email, password }).exec();
+    const user = await User.findOne({ where: { email, password } });
 
     if (!user) {
       return res // 401 :인증실패

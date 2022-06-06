@@ -1,25 +1,14 @@
 const express = require("express");
-const mongoose = require("mongoose");
 const { Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const Joi = require("joi");
-const { User } = require("./models"); // index에 연결해서 사용됨
-const Cart = require("./models/cart");
-const Goods = require("./models/goods");
+const { User, Cart, Goods } = require("./models"); // index에 연결해서 사용됨
 const authMiddleware = require("./middlewares/auth-middleware");
 
 const app = express();
 const router = express.Router();
 
 const port = 8080;
-
-const connect = () => {
-  mongoose
-    .connect("mongodb://localhost/shopping-demo-plus")
-    .catch((err) => console.error(err));
-};
-
-connect();
 
 const postUserSchema = Joi.object({
   nickname: Joi.string().required(),
@@ -104,26 +93,24 @@ router.get("/users/me", authMiddleware, async (req, res) => {
 router.get("/goods/cart", authMiddleware, async (req, res) => {
   const { userId } = res.locals.user;
 
-  const cart = await Cart.find({
-    userId,
-  }).exec();
+  const cart = await Cart.findAll({
+    where: { userId },
+  });
 
   const goodsIds = cart.map((c) => c.goodsId);
 
   // 루프 줄이기 위해 Mapping 가능한 객체로 만든것
-  const goodsKeyById = await Goods.find({
-    _id: { $in: goodsIds },
-  })
-    .exec()
-    .then((goods) =>
-      goods.reduce(
-        (prev, g) => ({
-          ...prev,
-          [g.goodsId]: g,
-        }),
-        {}
-      )
-    );
+  const goodsKeyById = await Goods.findAll({
+    where: { goodsId: goodsIds },
+  }).then((goods) =>
+    goods.reduce(
+      (prev, g) => ({
+        ...prev,
+        [g.goodsId]: g,
+      }),
+      {}
+    )
+  );
 
   res.send({
     cart: cart.map((c) => ({
@@ -142,21 +129,13 @@ router.put("/goods/:goodsId/cart", authMiddleware, async (req, res) => {
   const { goodsId } = req.params;
   const { quantity } = req.body;
 
-  const existsCart = await Cart.findOne({
-    userId,
-    goodsId,
-  }).exec();
+  const existsCart = await Cart.findOne({ where: { userId, goodsId } });
 
   if (existsCart) {
     existsCart.quantity = quantity;
     await existsCart.save();
   } else {
-    const cart = new Cart({
-      userId,
-      goodsId,
-      quantity,
-    });
-    await cart.save();
+    await Cart.create({ userId, goodsId, quantity });
   }
 
   // NOTE: 성공했을때 응답 값을 클라이언트가 사용하지 않는다.
@@ -171,13 +150,12 @@ router.delete("/goods/:goodsId/cart", authMiddleware, async (req, res) => {
   const { goodsId } = req.params;
 
   const existsCart = await Cart.findOne({
-    userId,
-    goodsId,
-  }).exec();
+    where: { userId, goodsId },
+  });
 
   // 있든 말든 신경 안쓴다. 그냥 있으면 지운다.
   if (existsCart) {
-    existsCart.delete();
+    existsCart.destroy();
   }
 
   // NOTE: 성공했을때 딱히 정해진 응답 값이 없다.
@@ -194,9 +172,10 @@ router.delete("/goods/:goodsId/cart", authMiddleware, async (req, res) => {
  */
 router.get("/goods", authMiddleware, async (req, res) => {
   const { category } = req.query;
-  const goods = await Goods.find(category ? { category } : undefined)
-    .sort("-date")
-    .exec();
+  const goods = await Goods.findAll({
+    order: [["goodsId", "DESC"]],
+    where: category ? { category } : undefined,
+  });
 
   res.send({ goods });
 });
@@ -206,7 +185,7 @@ router.get("/goods", authMiddleware, async (req, res) => {
  */
 router.get("/goods/:goodsId", authMiddleware, async (req, res) => {
   const { goodsId } = req.params;
-  const goods = await Goods.findById(goodsId).exec();
+  const goods = await Goods.findByPk(goodsId);
 
   if (!goods) {
     res.status(404).send({});
